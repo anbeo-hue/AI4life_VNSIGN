@@ -1,0 +1,13 @@
+[
+  { "id": "nghi", "name": "Nghỉ (Idle)" },
+  { "id": "xin_chao", "name": "Xin chào" },
+  { "id": "cam_on", "name": "Cảm ơn" },
+  { "id": "xin_loi", "name": "Xin lỗi" },
+  { "id": "tam_biet", "name": "Tạm biệt" },
+  { "id": "toi", "name": "Tôi" },
+  { "id": "ban", "name": "Bạn" },
+  { "id": "dong_y", "name": "Đồng ý" },
+  { "id": "khong_dong_y", "name": "Không đồng ý" },
+  { "id": "yeu_thuong", "name": "Yêu thương" }
+]
+

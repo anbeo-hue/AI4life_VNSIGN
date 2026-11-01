@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>VSL AI4Life - Dịch Ngôn Ngữ Ký Hiệu Việt Nam</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <h1 class="app-title">VSL AI4Life</h1>
+        <span class="badge stage-badge">M0 - Khung Dự Án</span>
+      </div>
+      <div class="header-right">
+        <span id="device-badge" class="badge info-badge">Đang phát hiện...</span>
+        <button id="btn-https-help" class="icon-btn" title="Hướng dẫn HTTPS trên điện thoại">📱 Hướng dẫn Mobile</button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-content">
+      <!-- Camera Viewport Area -->
+      <section class="camera-card">
+        <div class="viewport-wrapper" id="viewport-wrapper">
+          <video id="webcam" playsinline autoplay muted></video>
+          <canvas id="skeleton-canvas"></canvas>
+
+          <!-- Overlay Stats & HUD -->
+          <div class="hud-overlay top-hud">
+            <div class="hud-item fps-item">
+              <span class="hud-label">FPS:</span>
+              <span id="stat-fps" class="hud-value">--</span>
+            </div>
+            <div class="hud-item latency-item">
+              <span class="hud-label">Độ trễ:</span>
+              <span id="stat-latency" class="hud-value">-- ms</span>
+            </div>
+            <div class="hud-item mode-item">
+              <span class="hud-label">Tracker:</span>
+              <span id="stat-tracker-mode" class="hud-value text-accent">Holistic</span>
+            </div>
+          </div>
+
+          <!-- Bottom Detection Badges -->
+          <div class="hud-overlay bottom-hud">
+            <span id="badge-pose" class="status-pill status-off">Pose</span>
+            <span id="badge-left-hand" class="status-pill status-off">Tay Trái (L)</span>
+            <span id="badge-right-hand" class="status-pill status-off">Tay Phải (R)</span>
+          </div>
+
+          <!-- Loading Indicator -->
+          <div id="camera-loading" class="camera-loader">
+            <div class="spinner"></div>
+            <p id="loading-text">Đang khởi tạo camera và MediaPipe...</p>
+          </div>
+        </div>
+
+        <!-- Controls Toolbar -->
+        <div class="camera-controls">
+          <button id="btn-toggle-camera" class="btn btn-secondary">
+            <span class="btn-icon">📷</span> Đổi Camera
+          </button>
+          <button id="btn-toggle-mirror" class="btn btn-secondary active">
+            <span class="btn-icon">🪞</span> Lật gương: BẬT
+          </button>
+          <button id="btn-swap-handedness" class="btn btn-secondary" title="Đảo nhãn tay nếu thực nghiệm giơ tay phải bị ngược">
+            <span class="btn-icon">🔄</span> Đổi nhãn L/R: TẮT
+          </button>
+        </div>
+      </section>
+
+      <!-- Sidebar / Panels Area -->
+      <aside class="panel-card">
+        <!-- 1. Benchmark & Đánh giá Tracker -->
+        <div class="panel-section">
+          <h2 class="section-title">1. Đánh Giá & Benchmark Landmark</h2>
+          <p class="section-desc">So sánh hiệu năng giữa <strong>HolisticLandmarker</strong> và <strong>Pose + HandLandmarker</strong> theo yêu cầu mốc M0.</p>
+          
+          <div class="tracker-selector-group">
+            <label class="radio-label">
+              <input type="radio" name="tracker-mode" value="holistic" checked />
+              <span>HolisticLandmarker (Đầy đủ)</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="tracker-mode" value="pose_hand" />
+              <span>Pose + HandLandmarker (Ghép)</span>
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button id="btn-run-benchmark" class="btn btn-primary full-width">
+              ⚡ Chạy Benchmark So Sánh (10s)
+            </button>
+          </div>
+
+          <div id="benchmark-progress-box" class="progress-box hidden">
+            <div class="progress-bar-container">
+              <div id="benchmark-progress-bar" class="progress-bar" style="width: 0%"></div>
+            </div>
+            <p id="benchmark-progress-text" class="progress-text">Đang chuẩn bị...</p>
+          </div>
+
+          <div id="benchmark-result-card" class="result-box hidden">
+            <h4 class="result-title">Kết Quả Benchmark:</h4>
+            <div class="benchmark-grid">
+              <div class="benchmark-col">
+                <strong>Holistic:</strong>
+                <div>FPS: <span id="bm-holistic-fps">--</span></div>
+                <div>Độ trễ: <span id="bm-holistic-lat">--</span> ms</div>
+                <div>Nhận diện tay: <span id="bm-holistic-rate">--</span>%</div>
+              </div>
+              <div class="benchmark-col">
+                <strong>Pose + Hand:</strong>
+                <div>FPS: <span id="bm-pose-fps">--</span></div>
+                <div>Độ trễ: <span id="bm-pose-lat">--</span> ms</div>
+                <div>Nhận diện tay: <span id="bm-pose-rate">--</span>%</div>
+              </div>
+            </div>
+            <div class="benchmark-conclusion">
+              <p>Khuyến nghị: <strong id="bm-recommendation" class="text-success">--</strong></p>
+              <p class="text-muted" id="bm-notes"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Kiểm tra Đường ống Mô hình (Dummy ML Pipeline) -->
+        <div class="panel-section">
+          <h2 class="section-title">2. Thử Nghiệm Mô Hình Client-Side (ONNX)</h2>
+          <div class="alert-box alert-warning">
+            ⚠️ <strong>Lưu ý:</strong> Mô hình này mang trọng số ngẫu nhiên chỉ nhằm chứng minh đường ống (pipeline) suy luận WebAssembly/ONNX Runtime Web chạy trơn tru trong trình duyệt, KHÔNG phải kết quả nhận dạng thực tế.
+          </div>
+
+          <div class="onnx-status-row">
+            <span>Trạng thái ONNX:</span>
+            <span id="onnx-status" class="status-tag status-loading">Đang tải mô hình...</span>
+          </div>
+
+          <div class="action-row">
+            <button id="btn-run-inference" class="btn btn-success full-width" disabled>
+              ▶️ Thử Suy Luận Với Khung Hình Hiện Tại
+            </button>
+          </div>
+
+          <div id="inference-result-box" class="inference-box hidden">
+            <div class="inf-top">
+              <span>Dự đoán:</span>
+              <strong id="inf-top-label" class="inf-label">--</strong>
+              <span id="inf-latency" class="inf-time">(-- ms)</span>
+            </div>
+            <div class="prob-list" id="prob-list">
+              <!-- Danh sách xác suất sẽ render ở đây -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Hướng dẫn Thực nghiệm & Kiểm tra Nhãn Tay -->
+        <div class="panel-section">
+          <h2 class="section-title">3. Kiểm Tra Thực Nghiệm Nhãn Tay</h2>
+          <p class="section-desc">
+            Quy ước chuẩn: <strong>Theo người ký (Signer's perspective)</strong>.
+          </p>
+          <ul class="guide-list">
+            <li>Giơ <strong>tay phải</strong> của bạn lên: Đầu xương tay phải phải hiển thị nhãn <span class="tag-orange">Tay Phải (R)</span>.</li>
+            <li>Giơ <strong>tay trái</strong> của bạn lên: Đầu xương tay trái phải hiển thị nhãn <span class="tag-cyan">Tay Trái (L)</span>.</li>
+            <li>Nếu thấy bị ngược do đặc thù camera/thiết bị, bấm nút <strong>"Đổi nhãn L/R"</strong> ở trên để đảo lại.</li>
+          </ul>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Modal Hướng dẫn Mobile HTTPS -->
+    <div id="modal-https" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>📱 Truy Cập Từ Điện Thoại Qua Wi-Fi</h3>
+          <button id="btn-close-modal" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Trình duyệt di động yêu cầu kết nối <strong>HTTPS</strong> để cho phép bật Camera.</p>
+          <ol>
+            <li>Đảm bảo điện thoại và máy tính kết nối <strong>cùng mạng Wi-Fi</strong>.</li>
+            <li>Trên máy tính, mở terminal chạy: <code>npm run dev -- --host</code>.</li>
+            <li>Nhìn vào địa chỉ IP mạng (ví dụ: <code>https://192.168.1.x:5173/</code>) và nhập vào trình duyệt điện thoại.</li>
+            <li>Khi thấy thông báo <em>"Kết nối không riêng tư"</em>:
+              <ul>
+                <li><strong>Chrome/Android</strong>: Bấm <strong>Nâng cao (Advanced)</strong> &rarr; Chọn <strong>Tiếp tục truy cập (không an toàn)</strong>.</li>
+                <li><strong>Safari/iOS</strong>: Bấm <strong>Hiển thị chi tiết</strong> &rarr; Bấm <strong>Truy cập trang web này</strong>.</li>
+              </ul>
+            </li>
+            <li>Cấp quyền truy cập <strong>Camera</strong> khi được hỏi.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+

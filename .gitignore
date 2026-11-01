@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+dist/
+build/
+.cache/
+
+# Data & Models (Không commit file lớn)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+ml/checkpoints/
+ml/*.pt
+ml/*.pth
+ml/*.onnx
+!web/public/models/dummy_model.onnx
+
+# Environment & OS
+.env
+.env.local
+.DS_Store
+Thumbs.db
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+env/
+

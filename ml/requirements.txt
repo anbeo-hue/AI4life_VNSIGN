@@ -1,0 +1,6 @@
+# Ghim phiên bản đảm bảo tương thích đường ống ONNX & Huấn luyện
+onnx==1.23.2
+numpy>=1.24.0,<3.0.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
