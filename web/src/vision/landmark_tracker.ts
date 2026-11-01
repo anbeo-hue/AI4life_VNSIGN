@@ -10,7 +10,7 @@ import { Point3D, TrackerMode } from '../types';
 
 export interface TrackerStats {
   mode: TrackerMode;
-  fps: number;
+  fps: number; // Detection rate (lần phát hiện / giây)
   latencyMs: number;
   hasPose: boolean;
   hasLeftHand: boolean;
@@ -34,6 +34,15 @@ export class LandmarkTracker {
 
   private isReady: boolean = false;
   private swapHandedness: boolean = false; // Tùy chọn đảo nhãn nếu thực nghiệm phát hiện ngược
+
+  // Tối ưu hóa Pose + Hand
+  private enableOptimization: boolean = true;
+  private poseInterval: number = 3; // Chạy Pose mỗi 3 khung
+  private poseFrameCounter: number = 0;
+  private cachedPoseLandmarks: Point3D[] | null = null;
+  private downscaleCanvas: HTMLCanvasElement | null = null;
+  private downscaleCtx: CanvasRenderingContext2D | null = null;
+  private maxProcessWidth: number = 640;
 
   // Biến đo FPS và Latency
   private lastFrameTime = performance.now();
@@ -120,8 +129,47 @@ export class LandmarkTracker {
     return this.swapHandedness;
   }
 
+  public setEnableOptimization(enabled: boolean): void {
+    this.enableOptimization = enabled;
+    console.log(`[Tracker] Tối ưu hóa Pose+Hand: ${enabled ? 'BẬT' : 'TẮT'}`);
+  }
+
+  public isOptimizationEnabled(): boolean {
+    return this.enableOptimization;
+  }
+
   public getMode(): TrackerMode {
     return this.mode;
+  }
+
+  private getProcessedInput(video: HTMLVideoElement): HTMLVideoElement | HTMLCanvasElement {
+    if (!this.enableOptimization) return video;
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+
+    if (vw <= this.maxProcessWidth) {
+      return video;
+    }
+
+    if (!this.downscaleCanvas) {
+      this.downscaleCanvas = document.createElement('canvas');
+      this.downscaleCtx = this.downscaleCanvas.getContext('2d', { willReadFrequently: true });
+    }
+
+    const scale = this.maxProcessWidth / vw;
+    const dw = Math.round(vw * scale);
+    const dh = Math.round(vh * scale);
+
+    if (this.downscaleCanvas.width !== dw || this.downscaleCanvas.height !== dh) {
+      this.downscaleCanvas.width = dw;
+      this.downscaleCanvas.height = dh;
+    }
+
+    if (this.downscaleCtx) {
+      this.downscaleCtx.drawImage(video, 0, 0, dw, dh);
+      return this.downscaleCanvas;
+    }
+    return video;
   }
 
   public processVideoFrame(video: HTMLVideoElement, timestampMs: number): LandmarkResultData | null {
@@ -134,7 +182,9 @@ export class LandmarkTracker {
 
     try {
       if (this.mode === 'holistic' && this.holisticLandmarker) {
-        const result = this.holisticLandmarker.detectForVideo(video, timestampMs);
+        // HolisticLandmarker xử lý video
+        const inputSource = this.getProcessedInput(video);
+        const result = this.holisticLandmarker.detectForVideo(inputSource, timestampMs);
 
         if (result.poseLandmarks && result.poseLandmarks.length > 0) {
           poseLandmarks = result.poseLandmarks[0].map(pt => ({ x: pt.x, y: pt.y, z: pt.z, visibility: pt.visibility }));
@@ -148,12 +198,29 @@ export class LandmarkTracker {
           rightHand = result.rightHandLandmarks[0].map(pt => ({ x: pt.x, y: pt.y, z: pt.z }));
         }
       } else if (this.poseLandmarker && this.handLandmarker) {
-        const poseResult = this.poseLandmarker.detectForVideo(video, timestampMs);
-        if (poseResult.landmarks && poseResult.landmarks.length > 0) {
-          poseLandmarks = poseResult.landmarks[0].map(pt => ({ x: pt.x, y: pt.y, z: pt.z, visibility: pt.visibility }));
-        }
+        const inputSource = this.getProcessedInput(video);
 
-        const handResult = this.handLandmarker.detectForVideo(video, timestampMs);
+        // Tối ưu Pose: Chạy Pose mỗi poseInterval (3) khung, dùng lại cache cho các khung giữa
+        const shouldRunPose = !this.enableOptimization ||
+          (this.poseFrameCounter % this.poseInterval === 0) ||
+          !this.cachedPoseLandmarks;
+        this.poseFrameCounter++;
+
+        if (shouldRunPose) {
+          const poseResult = this.poseLandmarker.detectForVideo(inputSource, timestampMs);
+          if (poseResult.landmarks && poseResult.landmarks.length > 0) {
+            this.cachedPoseLandmarks = poseResult.landmarks[0].map(pt => ({
+              x: pt.x,
+              y: pt.y,
+              z: pt.z,
+              visibility: pt.visibility
+            }));
+          }
+        }
+        poseLandmarks = this.cachedPoseLandmarks;
+
+        // HandLandmarker luôn chạy mỗi khung để bắt trọn vẹn cử động tay
+        const handResult = this.handLandmarker.detectForVideo(inputSource, timestampMs);
         if (handResult.landmarks && handResult.landmarks.length > 0) {
           for (let i = 0; i < handResult.landmarks.length; i++) {
             const rawHand = handResult.landmarks[i].map(pt => ({ x: pt.x, y: pt.y, z: pt.z }));

@@ -1,5 +1,5 @@
 import { CameraManager } from './camera/camera_manager';
-import { LandmarkTracker } from './vision/landmark_tracker';
+import { LandmarkTracker, LandmarkResultData } from './vision/landmark_tracker';
 import { LandmarkNormalizer } from './normalizer/normalizer';
 import { OnnxPipelineRunner } from './inference/onnx_runner';
 import { BenchmarkManager } from './ui/benchmark';
@@ -15,7 +15,8 @@ const loadingText = document.getElementById('loading-text') as HTMLParagraphElem
 const deviceBadge = document.getElementById('device-badge') as HTMLSpanElement;
 
 // HUD Elements
-const statFps = document.getElementById('stat-fps') as HTMLSpanElement;
+const statCamFps = document.getElementById('stat-cam-fps') as HTMLSpanElement;
+const statDetectFps = document.getElementById('stat-detect-fps') as HTMLSpanElement;
 const statLatency = document.getElementById('stat-latency') as HTMLSpanElement;
 const statTrackerMode = document.getElementById('stat-tracker-mode') as HTMLSpanElement;
 const badgePose = document.getElementById('badge-pose') as HTMLSpanElement;
@@ -28,18 +29,33 @@ const btnToggleMirror = document.getElementById('btn-toggle-mirror') as HTMLButt
 const btnSwapHandedness = document.getElementById('btn-swap-handedness') as HTMLButtonElement;
 const radioModes = document.querySelectorAll<HTMLInputElement>('input[name="tracker-mode"]');
 
-// Benchmark
+// Countdown Overlay
+const countdownOverlay = document.getElementById('countdown-overlay') as HTMLDivElement;
+const countdownNumber = document.getElementById('countdown-number') as HTMLDivElement;
+
+// Benchmark Elements
 const btnRunBenchmark = document.getElementById('btn-run-benchmark') as HTMLButtonElement;
 const benchmarkProgressBox = document.getElementById('benchmark-progress-box') as HTMLDivElement;
 const benchmarkProgressBar = document.getElementById('benchmark-progress-bar') as HTMLDivElement;
 const benchmarkProgressText = document.getElementById('benchmark-progress-text') as HTMLParagraphElement;
 const benchmarkResultCard = document.getElementById('benchmark-result-card') as HTMLDivElement;
+const btnExportJson = document.getElementById('btn-export-json') as HTMLButtonElement;
+const chkOptimizePoseHand = document.getElementById('chk-optimize-posehand') as HTMLInputElement;
+
+const bmDeviceType = document.getElementById('bm-device-type') as HTMLElement;
+const bmCameraRes = document.getElementById('bm-camera-res') as HTMLElement;
+const bmCameraFps = document.getElementById('bm-camera-fps') as HTMLElement;
+
 const bmHolisticFps = document.getElementById('bm-holistic-fps') as HTMLSpanElement;
 const bmHolisticLat = document.getElementById('bm-holistic-lat') as HTMLSpanElement;
-const bmHolisticRate = document.getElementById('bm-holistic-rate') as HTMLSpanElement;
+const bmHolisticOneHand = document.getElementById('bm-holistic-one-hand') as HTMLSpanElement;
+const bmHolisticBothHands = document.getElementById('bm-holistic-both-hands') as HTMLSpanElement;
+
 const bmPoseFps = document.getElementById('bm-pose-fps') as HTMLSpanElement;
 const bmPoseLat = document.getElementById('bm-pose-lat') as HTMLSpanElement;
-const bmPoseRate = document.getElementById('bm-pose-rate') as HTMLSpanElement;
+const bmPoseOneHand = document.getElementById('bm-pose-one-hand') as HTMLSpanElement;
+const bmPoseBothHands = document.getElementById('bm-pose-both-hands') as HTMLSpanElement;
+
 const bmRecommendation = document.getElementById('bm-recommendation') as HTMLElement;
 const bmNotes = document.getElementById('bm-notes') as HTMLParagraphElement;
 
@@ -60,11 +76,40 @@ const modalHttps = document.getElementById('modal-https') as HTMLDivElement;
 const cameraManager = new CameraManager({ videoElement: videoEl });
 const tracker = new LandmarkTracker();
 const onnxRunner = new OnnxPipelineRunner();
-const benchmarkManager = new BenchmarkManager(tracker);
+const benchmarkManager = new BenchmarkManager(tracker, () => ({
+  trackFrameRate: cameraManager.getTrackFrameRate(),
+  videoWidth: cameraManager.getVideoWidth(),
+  videoHeight: cameraManager.getVideoHeight(),
+  facingMode: cameraManager.getFacingMode(),
+  label: cameraManager.getTrackLabel()
+}));
+
+// Kết nối callback đếm ngược cho benchmark
+benchmarkManager.setCountdownCallback((secondsLeft) => {
+  if (secondsLeft !== null) {
+    countdownOverlay.classList.remove('hidden');
+    countdownNumber.innerText = `${secondsLeft}`;
+  } else {
+    countdownOverlay.classList.add('hidden');
+  }
+});
 
 // Buffer lưu trữ 30 frames gần nhất phục vụ kiểm tra Pipeline
 const RECENT_FRAME_BUFFER_SIZE = 30;
 const frameFeatureBuffer: number[][] = [];
+
+// Trạng thái khung hình và bộ đếm FPS
+let latestResult: LandmarkResultData | null = null;
+let isDetecting = false;
+let lastProcessedTime = -1;
+let lastCameraFrameTime = performance.now();
+
+// Thống kê tốc độ khung hình
+let cameraFrameCount = 0;
+let detectionCount = 0;
+let lastStatsUpdate = performance.now();
+let currentCameraFps = 0;
+let currentDetectFps = 0;
 
 // Device Info helper
 function detectDevice(): void {
@@ -95,56 +140,138 @@ function syncCanvasSize(): void {
   }
 }
 
-// Vòng lặp xử lý chính (Render loop)
-let lastTimestamp = -1;
-function renderLoop(): void {
-  if (cameraManager.isActive()) {
-    syncCanvasSize();
-    const now = performance.now();
+/**
+ * Xử lý phát hiện Landmark cho đúng 1 khung camera mới
+ * @param cameraTimestampMs Timestamp thực của khung camera (ms)
+ */
+function processCameraFrame(cameraTimestampMs: number): void {
+  if (!cameraManager.isActive() || isDetecting) return;
 
-    // Timestamp truyền vào detectForVideo phải tăng dần
-    if (now > lastTimestamp) {
-      lastTimestamp = now;
-      const result = tracker.processVideoFrame(videoEl, now);
+  syncCanvasSize();
+  isDetecting = true;
+  cameraFrameCount++;
 
-      if (result) {
-        // 1. Vẽ khung xương
-        tracker.drawSkeleton(ctx, result, canvasEl.width, canvasEl.height);
+  try {
+    const result = tracker.processVideoFrame(videoEl, cameraTimestampMs);
+    if (result) {
+      latestResult = result;
+      detectionCount++;
 
-        // 2. Cập nhật HUD & Badge
-        statFps.innerText = `${result.stats.fps}`;
-        statLatency.innerText = `${result.stats.latencyMs} ms`;
+      // Hook benchmark
+      if ((window as any).__vslBenchmarkHook) {
+        (window as any).__vslBenchmarkHook({
+          latencyMs: result.stats.latencyMs,
+          hasLeftHand: result.stats.hasLeftHand,
+          hasRightHand: result.stats.hasRightHand
+        });
+      }
 
-        badgePose.className = `status-pill ${result.stats.hasPose ? 'status-on' : 'status-off'}`;
-        badgeLeftHand.className = `status-pill ${result.stats.hasLeftHand ? 'status-on' : 'status-off'}`;
-        badgeRightHand.className = `status-pill ${result.stats.hasRightHand ? 'status-on' : 'status-off'}`;
+      // Chuẩn hóa đặc trưng khung hình
+      const normalized = LandmarkNormalizer.normalizeFrame(
+        result.poseLandmarks,
+        result.leftHandLandmarks,
+        result.rightHandLandmarks,
+        canvasEl.width,
+        canvasEl.height,
+        cameraTimestampMs
+      );
 
-        // Hook benchmark collector nếu đang chạy bài đo
-        if ((window as any).__vslBenchmarkCollector) {
-          (window as any).__vslBenchmarkCollector(result.stats);
-        }
+      frameFeatureBuffer.push(normalized.vector);
+      if (frameFeatureBuffer.length > RECENT_FRAME_BUFFER_SIZE) {
+        frameFeatureBuffer.shift();
+      }
 
-        // 3. Chuẩn hóa đặc trưng khung hình và lưu vào Circular Buffer (30 frames)
-        const normalized = LandmarkNormalizer.normalizeFrame(
-          result.poseLandmarks,
-          result.leftHandLandmarks,
-          result.rightHandLandmarks,
-          canvasEl.width,
-          canvasEl.height,
-          now
-        );
-
-        frameFeatureBuffer.push(normalized.vector);
-        if (frameFeatureBuffer.length > RECENT_FRAME_BUFFER_SIZE) {
-          frameFeatureBuffer.shift();
-        }
-
-        // Kích hoạt nút chạy inference nếu buffer đã có dữ liệu và ONNX đã sẵn sàng
-        if (onnxRunner.isReady() && frameFeatureBuffer.length >= 10 && btnRunInference.disabled) {
-          btnRunInference.disabled = false;
-        }
+      if (onnxRunner.isReady() && frameFeatureBuffer.length >= 10 && btnRunInference.disabled) {
+        btnRunInference.disabled = false;
       }
     }
+  } finally {
+    isDetecting = false;
+  }
+}
+
+/**
+ * Vòng lặp nhận diện khung camera mới:
+ * Sử dụng HTMLVideoElement.requestVideoFrameCallback (nếu có)
+ * Fallback: so sánh videoEl.currentTime trong requestAnimationFrame
+ */
+function startCameraFrameListener(): void {
+  const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  console.log(`[Camera] Cơ chế bắt khung hình mới: ${hasRVFC ? 'requestVideoFrameCallback (Chuẩn)' : 'currentTime diff (Fallback)'}`);
+
+  if (hasRVFC) {
+    const onFrame = (now: DOMHighResTimeStamp, metadata: any) => {
+      // metadata.mediaTime là thời gian khung hình trong video (s)
+      // Nếu live stream không hỗ trợ mediaTime (trả về 0 hoặc không đổi), dùng metadata.presentationTime hoặc now
+      const frameTimeMs = (metadata && metadata.mediaTime > 0)
+        ? metadata.mediaTime * 1000
+        : now;
+
+      processCameraFrame(frameTimeMs);
+
+      if (cameraManager.isActive()) {
+        (videoEl as any).requestVideoFrameCallback(onFrame);
+      } else {
+        // Kiểm tra lại sau 100ms nếu camera tạm dừng
+        setTimeout(() => {
+          if (cameraManager.isActive()) {
+            (videoEl as any).requestVideoFrameCallback(onFrame);
+          }
+        }, 100);
+      }
+    };
+    (videoEl as any).requestVideoFrameCallback(onFrame);
+  } else {
+    // Fallback cho trình duyệt cũ
+    let lastVideoTime = -1;
+    const checkFrame = () => {
+      if (cameraManager.isActive()) {
+        const curTime = videoEl.currentTime;
+        if (curTime !== lastVideoTime && curTime > 0) {
+          lastVideoTime = curTime;
+          processCameraFrame(curTime * 1000);
+        }
+      }
+      requestAnimationFrame(checkFrame);
+    };
+    requestAnimationFrame(checkFrame);
+  }
+}
+
+// Vòng lặp hiển thị giao diện & vẽ Canvas (Render Loop mượt mà 60fps)
+function renderLoop(): void {
+  if (latestResult && cameraManager.isActive()) {
+    // 1. Vẽ khung xương
+    tracker.drawSkeleton(ctx, latestResult, canvasEl.width, canvasEl.height);
+
+    // 2. Cập nhật Badge
+    badgePose.className = `status-pill ${latestResult.stats.hasPose ? 'status-on' : 'status-off'}`;
+    badgeLeftHand.className = `status-pill ${latestResult.stats.hasLeftHand ? 'status-on' : 'status-off'}`;
+    badgeRightHand.className = `status-pill ${latestResult.stats.hasRightHand ? 'status-on' : 'status-off'}`;
+
+    statLatency.innerText = `${latestResult.stats.latencyMs} ms`;
+  }
+
+  // Cập nhật tốc độ khung hình và số lần phát hiện/giây mỗi 500ms
+  const now = performance.now();
+  const elapsed = now - lastStatsUpdate;
+  if (elapsed >= 500) {
+    const trackFps = cameraManager.getTrackFrameRate();
+    currentCameraFps = Math.round((cameraFrameCount * 1000) / elapsed);
+    currentDetectFps = Math.round((detectionCount * 1000) / elapsed);
+
+    // Hiển thị tốc độ camera: ưu tiên track.getSettings().frameRate nếu có, kèm theo FPS đo đếm thực tế
+    if (trackFps) {
+      statCamFps.innerText = `${trackFps} (${currentCameraFps} thực)`;
+    } else {
+      statCamFps.innerText = `${currentCameraFps} fps`;
+    }
+
+    statDetectFps.innerText = `${currentDetectFps} /s`;
+
+    cameraFrameCount = 0;
+    detectionCount = 0;
+    lastStatsUpdate = now;
   }
 
   requestAnimationFrame(renderLoop);
@@ -167,7 +294,8 @@ async function initApp(): Promise<void> {
 
     cameraLoader.classList.add('hidden');
 
-    // 3. Khởi động render loop
+    // 3. Khởi động cơ chế lắng nghe khung camera mới & Render loop
+    startCameraFrameListener();
     requestAnimationFrame(renderLoop);
 
     // 4. Tải mô hình ONNX Dummy ở chế độ ngầm
@@ -190,7 +318,7 @@ async function initApp(): Promise<void> {
 // Xử lý sự kiện giao diện
 btnToggleCamera.addEventListener('click', async () => {
   btnToggleCamera.disabled = true;
-  const newFacing = await cameraManager.switchCamera();
+  await cameraManager.switchCamera();
   updateMirrorUI(cameraManager.getIsMirrored());
   btnToggleCamera.disabled = false;
 });
@@ -239,17 +367,27 @@ btnRunBenchmark.addEventListener('click', async () => {
   try {
     const report = await benchmarkManager.runFullBenchmark(5000); // 5s mỗi chế độ = 10s tổng
 
-    // Hiển thị kết quả
+    // Hiển thị thông tin thiết bị & camera
+    bmDeviceType.innerText = report.deviceInfo.isMobile ? '📱 Mobile' : '💻 Máy tính';
+    bmCameraRes.innerText = `${report.cameraInfo.videoWidth}×${report.cameraInfo.videoHeight}`;
+    const trackFps = report.cameraInfo.trackFrameRate;
+    bmCameraFps.innerText = trackFps ? `${trackFps} fps (phần cứng)` : `${currentCameraFps} fps (đo đếm)`;
+
+    // Hiển thị số liệu Holistic
     bmHolisticFps.innerText = `${report.holistic.avgFps}`;
     bmHolisticLat.innerText = `${report.holistic.avgLatencyMs}`;
-    bmHolisticRate.innerText = `${report.holistic.handDetectRate}`;
+    bmHolisticOneHand.innerText = `${report.holistic.oneHandRate}`;
+    bmHolisticBothHands.innerText = `${report.holistic.bothHandsRate}`;
 
+    // Hiển thị số liệu Pose + Hand
     bmPoseFps.innerText = `${report.poseHand.avgFps}`;
     bmPoseLat.innerText = `${report.poseHand.avgLatencyMs}`;
-    bmPoseRate.innerText = `${report.poseHand.handDetectRate}`;
+    bmPoseOneHand.innerText = `${report.poseHand.oneHandRate}`;
+    bmPoseBothHands.innerText = `${report.poseHand.bothHandsRate}`;
 
+    // Khuyến nghị
     bmRecommendation.innerText = report.recommendation === 'holistic' ? 'HolisticLandmarker' : 'Pose + HandLandmarker';
-    bmNotes.innerText = report.notes;
+    bmNotes.innerText = report.reason;
 
     // Đồng bộ radio button
     radioModes.forEach(r => {
@@ -267,13 +405,23 @@ btnRunBenchmark.addEventListener('click', async () => {
   }
 });
 
+// Nút xuất báo cáo JSON
+btnExportJson.addEventListener('click', () => {
+  benchmarkManager.downloadJsonReport();
+});
+
+// Checkbox bật/tắt tối ưu hóa Pose+Hand
+chkOptimizePoseHand.addEventListener('change', (e) => {
+  const isChecked = (e.target as HTMLInputElement).checked;
+  tracker.setEnableOptimization(isChecked);
+});
+
 // Chạy thử suy luận ONNX với Buffer 30 frames hiện tại
 btnRunInference.addEventListener('click', async () => {
   if (!onnxRunner.isReady() || frameFeatureBuffer.length === 0) return;
 
   btnRunInference.disabled = true;
 
-  // Lấy 30 frames (nếu buffer chưa đủ 30, lặp frame cuối cho đủ)
   const seq: number[] = [];
   const bufferLen = frameFeatureBuffer.length;
   for (let i = 0; i < RECENT_FRAME_BUFFER_SIZE; i++) {
@@ -289,7 +437,6 @@ btnRunInference.addEventListener('click', async () => {
     infTopLabel.innerText = result.topLabel;
     infLatency.innerText = `(${result.latencyMs} ms)`;
 
-    // Render thanh xác suất cho từng nhãn
     probList.innerHTML = '';
     const labels = onnxRunner.getLabels();
     labels.forEach(l => {
@@ -331,4 +478,3 @@ modalHttps.addEventListener('click', (e) => {
 window.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
-

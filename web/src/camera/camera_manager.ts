@@ -100,6 +100,20 @@ export class CameraManager {
     return this.video;
   }
 
+  public getTrackFrameRate(): number | null {
+    if (!this.stream) return null;
+    const tracks = this.stream.getVideoTracks();
+    if (tracks.length === 0) return null;
+    const settings = tracks[0].getSettings();
+    return settings.frameRate ? Math.round(settings.frameRate) : null;
+  }
+
+  public getTrackLabel(): string {
+    if (!this.stream) return 'Không có';
+    const tracks = this.stream.getVideoTracks();
+    return tracks.length > 0 ? tracks[0].label : 'Không có';
+  }
+
   public isActive(): boolean {
     return this.isRunning && this.video.readyState >= 2;
   }

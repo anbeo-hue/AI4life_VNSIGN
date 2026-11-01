@@ -30,18 +30,28 @@
 
           <!-- Overlay Stats & HUD -->
           <div class="hud-overlay top-hud">
-            <div class="hud-item fps-item">
-              <span class="hud-label">FPS:</span>
-              <span id="stat-fps" class="hud-value">--</span>
+            <div class="hud-item">
+              <span class="hud-label">Cam FPS:</span>
+              <span id="stat-cam-fps" class="hud-value text-accent">--</span>
             </div>
-            <div class="hud-item latency-item">
+            <div class="hud-item">
+              <span class="hud-label">Phát hiện/s:</span>
+              <span id="stat-detect-fps" class="hud-value">--</span>
+            </div>
+            <div class="hud-item">
               <span class="hud-label">Độ trễ:</span>
               <span id="stat-latency" class="hud-value">-- ms</span>
             </div>
-            <div class="hud-item mode-item">
+            <div class="hud-item">
               <span class="hud-label">Tracker:</span>
               <span id="stat-tracker-mode" class="hud-value text-accent">Holistic</span>
             </div>
+          </div>
+
+          <!-- Overlay Countdown -->
+          <div id="countdown-overlay" class="countdown-overlay hidden">
+            <div id="countdown-number" class="countdown-number">5</div>
+            <p class="countdown-label">Chuẩn bị giơ 2 tay trước camera...</p>
           </div>
 
           <!-- Bottom Detection Badges -->
@@ -88,11 +98,15 @@
               <input type="radio" name="tracker-mode" value="pose_hand" />
               <span>Pose + HandLandmarker (Ghép)</span>
             </label>
+            <label class="checkbox-label" title="Giảm độ phân giải xử lý 640px và chạy Pose mỗi 3 khung hình">
+              <input type="checkbox" id="chk-optimize-posehand" checked />
+              <span class="text-accent">⚡ Bật tối ưu Pose+Hand (bỏ khung Pose & downscale)</span>
+            </label>
           </div>
 
           <div class="action-row">
             <button id="btn-run-benchmark" class="btn btn-primary full-width">
-              ⚡ Chạy Benchmark So Sánh (10s)
+              ⚡ Bắt Đầu Benchmark (Đếm ngược 5s &rarr; Đo 10s)
             </button>
           </div>
 
@@ -104,19 +118,30 @@
           </div>
 
           <div id="benchmark-result-card" class="result-box hidden">
-            <h4 class="result-title">Kết Quả Benchmark:</h4>
+            <div class="result-header">
+              <h4 class="result-title">Kết Quả Benchmark (Đồng bộ khung camera)</h4>
+              <button id="btn-export-json" class="btn btn-secondary btn-sm" title="Tải file JSON kết quả benchmark">
+                📥 Xuất JSON
+              </button>
+            </div>
+            <div class="camera-spec-line">
+              <div>Thiết bị: <strong id="bm-device-type">--</strong></div>
+              <div>Camera: <strong id="bm-camera-res" class="text-accent">--</strong> | <strong id="bm-camera-fps" class="text-accent">-- fps</strong></div>
+            </div>
             <div class="benchmark-grid">
               <div class="benchmark-col">
-                <strong>Holistic:</strong>
-                <div>FPS: <span id="bm-holistic-fps">--</span></div>
-                <div>Độ trễ: <span id="bm-holistic-lat">--</span> ms</div>
-                <div>Nhận diện tay: <span id="bm-holistic-rate">--</span>%</div>
+                <strong class="col-header">HolisticLandmarker</strong>
+                <div>Tốc độ: <span id="bm-holistic-fps" class="text-accent font-bold">--</span> lần/s</div>
+                <div>Độ trễ TB: <span id="bm-holistic-lat">--</span> ms</div>
+                <div>Khung có &ge;1 tay: <span id="bm-holistic-one-hand">--</span>%</div>
+                <div>Khung đủ 2 tay: <span id="bm-holistic-both-hands" class="text-accent font-bold">--</span>%</div>
               </div>
               <div class="benchmark-col">
-                <strong>Pose + Hand:</strong>
-                <div>FPS: <span id="bm-pose-fps">--</span></div>
-                <div>Độ trễ: <span id="bm-pose-lat">--</span> ms</div>
-                <div>Nhận diện tay: <span id="bm-pose-rate">--</span>%</div>
+                <strong class="col-header">Pose + HandLandmarker</strong>
+                <div>Tốc độ: <span id="bm-pose-fps" class="text-accent font-bold">--</span> lần/s</div>
+                <div>Độ trễ TB: <span id="bm-pose-lat">--</span> ms</div>
+                <div>Khung có &ge;1 tay: <span id="bm-pose-one-hand">--</span>%</div>
+                <div>Khung đủ 2 tay: <span id="bm-pose-both-hands" class="text-accent font-bold">--</span>%</div>
               </div>
             </div>
             <div class="benchmark-conclusion">

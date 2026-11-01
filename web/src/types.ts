@@ -65,5 +65,38 @@ export interface LabelItem {
   name: string;
 }
 
+export interface BenchmarkModeStats {
+  avgFps: number; // Detection rate (lần/giây)
+  avgLatencyMs: number;
+  oneHandRate: number; // Tỉ lệ khung có ít nhất 1 tay (%)
+  bothHandsRate: number; // Tỉ lệ khung có đủ 2 tay (%)
+  sampleCount: number;
+}
+
+export interface BenchmarkReportData {
+  schemaVersion: string;
+  timestamp: string;
+  deviceInfo: {
+    userAgent: string;
+    isMobile: boolean;
+    screenWidth: number;
+    screenHeight: number;
+    devicePixelRatio: number;
+  };
+  cameraInfo: {
+    videoWidth: number;
+    videoHeight: number;
+    trackFrameRate: number | null;
+    facingMode: 'user' | 'environment';
+    label: string;
+  };
+  holistic: BenchmarkModeStats;
+  poseHand: BenchmarkModeStats & {
+    isOptimized: boolean;
+  };
+  recommendation: TrackerMode;
+  reason: string;
+}
+
 export type TrackerMode = 'holistic' | 'pose_hand';
 
