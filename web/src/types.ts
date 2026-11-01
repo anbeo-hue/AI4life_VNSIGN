@@ -1,3 +1,6 @@
+declare const __MEDIAPIPE_VERSION__: string;
+export const ACTUAL_MEDIAPIPE_VERSION = typeof __MEDIAPIPE_VERSION__ !== 'undefined' ? __MEDIAPIPE_VERSION__ : '0.10.35';
+
 export interface Point3D {
   x: number;
   y: number;
@@ -31,6 +34,12 @@ export interface ExtractedFrame {
   rawRightHandLandmarks?: Point3D[];
 }
 
+export interface TrimRange {
+  cropStart: number; // Index khung bắt đầu (0-based)
+  cropEnd: number;   // Index khung kết thúc (0-based)
+  isAutoTrimmed: boolean;
+}
+
 export interface RecordedSample {
   schemaVersion: string;
   mediaPipeVersion: string;
@@ -57,12 +66,14 @@ export interface RecordedSample {
     rightHandPresentRate: number;
     qualityWarning?: string;
   };
+  trimRange: TrimRange;
   frames: ExtractedFrame[];
 }
 
 export interface LabelItem {
   id: string;
   name: string;
+  confirmed?: boolean; // Cờ xác nhận chuẩn VSL
 }
 
 export interface BenchmarkModeStats {

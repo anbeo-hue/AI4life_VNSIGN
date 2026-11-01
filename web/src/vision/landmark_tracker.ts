@@ -25,7 +25,7 @@ export interface LandmarkResultData {
 }
 
 export class LandmarkTracker {
-  private mode: TrackerMode = 'holistic';
+  private mode: TrackerMode = 'pose_hand'; // Ưu tiên pose_hand theo kết quả benchmark thực nghiệm
   private wasmBasePath = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 
   private holisticLandmarker: HolisticLandmarker | null = null;
@@ -53,7 +53,7 @@ export class LandmarkTracker {
 
   constructor() {}
 
-  public async init(initialMode: TrackerMode = 'holistic'): Promise<void> {
+  public async init(initialMode: TrackerMode = 'pose_hand'): Promise<void> {
     this.mode = initialMode;
     const vision = await FilesetResolver.forVisionTasks(this.wasmBasePath);
 

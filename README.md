@@ -11,6 +11,7 @@ Dự án phát triển nền tảng web dịch ngôn ngữ ký hiệu hai chiề
 - `ml/`: Mã nguồn Python phục vụ sinh dummy model, tiền xử lý dữ liệu và huấn luyện mô hình nhận dạng chuỗi.
 - `data/`: Thư mục lưu trữ dữ liệu landmark (không lưu video, không commit file dữ liệu lớn).
 - `docs/`: Tài liệu kỹ thuật chi tiết:
+  - `docs/data_collection_guide.md`: Sổ tay hướng dẫn thu thập dữ liệu VSL (đặt máy, ánh sáng, lớp Nghỉ, đạo đức).
   - `docs/onnx_compatibility.md`: Bảng tương thích ONNX (onnx 1.23.2, onnxruntime-web 1.31.1, ir_version 10, opset 14).
   - `docs/https_setup.md`: Hướng dẫn cấu hình và truy cập HTTPS trên điện thoại.
   - `docs/feature_vector_spec.md`: Đặc tả vector đặc trưng và quy tắc chuẩn hóa tọa độ.

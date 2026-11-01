@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>VSL AI4Life - Dịch Ngôn Ngữ Ký Hiệu Việt Nam</title>
+  <title>VSL AI4Life - Thu Thập & Nhận Dạng Ngôn Ngữ Ký Hiệu</title>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -12,11 +12,11 @@
     <header class="app-header">
       <div class="header-left">
         <h1 class="app-title">VSL AI4Life</h1>
-        <span class="badge stage-badge">M0 - Khung Dự Án</span>
+        <span class="badge stage-badge">M1 - Chế Độ Thu Dữ Liệu</span>
       </div>
       <div class="header-right">
         <span id="device-badge" class="badge info-badge">Đang phát hiện...</span>
-        <button id="btn-https-help" class="icon-btn" title="Hướng dẫn HTTPS trên điện thoại">📱 Hướng dẫn Mobile</button>
+        <button id="btn-https-help" class="icon-btn" title="Hướng dẫn HTTPS trên điện thoại">📱 Mobile</button>
       </div>
     </header>
 
@@ -27,6 +27,12 @@
         <div class="viewport-wrapper" id="viewport-wrapper">
           <video id="webcam" playsinline autoplay muted></video>
           <canvas id="skeleton-canvas"></canvas>
+
+          <!-- Overlay Recording Indicator -->
+          <div id="recording-overlay" class="recording-indicator hidden">
+            <div class="rec-dot"></div>
+            <span class="rec-text">ĐANG GHI: <strong id="rec-progress-text">0/30</strong></span>
+          </div>
 
           <!-- Overlay Stats & HUD -->
           <div class="hud-overlay top-hud">
@@ -44,14 +50,17 @@
             </div>
             <div class="hud-item">
               <span class="hud-label">Tracker:</span>
-              <span id="stat-tracker-mode" class="hud-value text-accent">Holistic</span>
+              <span id="stat-tracker-mode" class="hud-value text-accent">Pose + Hand</span>
+            </div>
+            <div id="hud-fps-warning" class="hud-item hud-warning hidden">
+              <span>⚠️ FPS thấp (&lt; 20)</span>
             </div>
           </div>
 
           <!-- Overlay Countdown -->
           <div id="countdown-overlay" class="countdown-overlay hidden">
-            <div id="countdown-number" class="countdown-number">5</div>
-            <p class="countdown-label">Chuẩn bị giơ 2 tay trước camera...</p>
+            <div id="countdown-number" class="countdown-number">3</div>
+            <p id="countdown-label" class="countdown-label">Chuẩn bị thực hiện ký hiệu...</p>
           </div>
 
           <!-- Bottom Detection Badges -->
@@ -84,114 +93,261 @@
 
       <!-- Sidebar / Panels Area -->
       <aside class="panel-card">
-        <!-- 1. Benchmark & Đánh giá Tracker -->
-        <div class="panel-section">
-          <h2 class="section-title">1. Đánh Giá & Benchmark Landmark</h2>
-          <p class="section-desc">So sánh hiệu năng giữa <strong>HolisticLandmarker</strong> và <strong>Pose + HandLandmarker</strong> theo yêu cầu mốc M0.</p>
-          
-          <div class="tracker-selector-group">
-            <label class="radio-label">
-              <input type="radio" name="tracker-mode" value="holistic" checked />
-              <span>HolisticLandmarker (Đầy đủ)</span>
-            </label>
-            <label class="radio-label">
-              <input type="radio" name="tracker-mode" value="pose_hand" />
-              <span>Pose + HandLandmarker (Ghép)</span>
-            </label>
-            <label class="checkbox-label" title="Giảm độ phân giải xử lý 640px và chạy Pose mỗi 3 khung hình">
-              <input type="checkbox" id="chk-optimize-posehand" checked />
-              <span class="text-accent">⚡ Bật tối ưu Pose+Hand (bỏ khung Pose & downscale)</span>
-            </label>
-          </div>
+        <!-- Tab Navigation Buttons -->
+        <div class="tab-nav">
+          <button id="tab-btn-collector" class="tab-btn active">
+            📥 Chế Độ Thu Dữ Liệu (M1)
+          </button>
+          <button id="tab-btn-benchmark" class="tab-btn">
+            ⚡ Benchmark & Thử Nghiệm (M0)
+          </button>
+        </div>
 
-          <div class="action-row">
-            <button id="btn-run-benchmark" class="btn btn-primary full-width">
-              ⚡ Bắt Đầu Benchmark (Đếm ngược 5s &rarr; Đo 10s)
-            </button>
-          </div>
-
-          <div id="benchmark-progress-box" class="progress-box hidden">
-            <div class="progress-bar-container">
-              <div id="benchmark-progress-bar" class="progress-bar" style="width: 0%"></div>
+        <!-- ==================== TAB 1: THU THẬP DỮ LIỆU (M1) ==================== -->
+        <div id="tab-content-collector" class="tab-pane active">
+          <!-- 1.1 Form Cấu Hình Thu Mẫu -->
+          <div class="panel-section">
+            <h2 class="section-title">1. Thiết Lập Mẫu Thu Thập</h2>
+            
+            <!-- Banner Nhãn tạm -->
+            <div id="unconfirmed-label-banner" class="alert-box alert-warning label-banner" style="margin-bottom: 0.5rem;">
+              ⚠️ <strong>Nhãn tạm, chưa xác nhận VSL chuẩn</strong>. Vui lòng tham vấn chuyên gia người Điếc để chuẩn hóa ký hiệu trước khi áp dụng thực tế!
             </div>
-            <p id="benchmark-progress-text" class="progress-text">Đang chuẩn bị...</p>
-          </div>
 
-          <div id="benchmark-result-card" class="result-box hidden">
-            <div class="result-header">
-              <h4 class="result-title">Kết Quả Benchmark (Đồng bộ khung camera)</h4>
-              <button id="btn-export-json" class="btn btn-secondary btn-sm" title="Tải file JSON kết quả benchmark">
-                📥 Xuất JSON
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="select-label" class="form-label">Nhãn ký hiệu:</label>
+                <select id="select-label" class="form-select">
+                  <!-- Được nạp tự động từ labels.json -->
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="input-signer-id" class="form-label">Mã người ký (Ẩn danh):</label>
+                <input type="text" id="input-signer-id" class="form-input" value="signer_01" placeholder="Ví dụ: signer_01" />
+              </div>
+
+              <div class="form-group">
+                <label for="select-record-duration" class="form-label">Thời lượng ghi thô:</label>
+                <select id="select-record-duration" class="form-select">
+                  <option value="3" selected>3 giây (Mặc định - có thể dừng sớm)</option>
+                  <option value="4">4 giây (Động tác dài)</option>
+                  <option value="5">5 giây (Động tác phức tạp)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Mã phiên thu (Session):</label>
+                <input type="text" id="display-session-id" class="form-input text-muted" readonly />
+              </div>
+            </div>
+
+            <!-- Nút bắt đầu thu / dừng sớm -->
+            <div class="action-row" style="margin-top: 0.5rem;">
+              <button id="btn-start-record" class="btn btn-danger full-width btn-lg">
+                🔴 Bắt Đầu Thu Mẫu (Phím Space)
               </button>
             </div>
-            <div class="camera-spec-line">
-              <div>Thiết bị: <strong id="bm-device-type">--</strong></div>
-              <div>Camera: <strong id="bm-camera-res" class="text-accent">--</strong> | <strong id="bm-camera-fps" class="text-accent">-- fps</strong></div>
+            <p id="record-hint" class="section-hint text-center">💡 Mẹo: Bấm <strong>Spacebar</strong> để Bắt đầu thu &rarr; Bấm <strong>Spacebar</strong> lần nữa để Dừng sớm khi làm xong.</p>
+          </div>
+
+          <!-- 1.2 Hộp Xem Lại Mẫu (Review Modal / Card) -->
+          <div id="review-card" class="panel-section review-section hidden">
+            <div class="review-header">
+              <h3 class="section-title text-accent">👁️ Xem Lại Mẫu Ký Hiệu Vừa Ghi</h3>
+              <span id="review-frame-counter" class="badge info-badge">Frame: 1/30</span>
             </div>
-            <div class="benchmark-grid">
-              <div class="benchmark-col">
-                <strong class="col-header">HolisticLandmarker</strong>
-                <div>Tốc độ: <span id="bm-holistic-fps" class="text-accent font-bold">--</span> lần/s</div>
-                <div>Độ trễ TB: <span id="bm-holistic-lat">--</span> ms</div>
-                <div>Khung có &ge;1 tay: <span id="bm-holistic-one-hand">--</span>%</div>
-                <div>Khung đủ 2 tay: <span id="bm-holistic-both-hands" class="text-accent font-bold">--</span>%</div>
+
+            <div class="review-viewport">
+              <canvas id="replay-canvas"></canvas>
+            </div>
+
+            <!-- Chỉ số chất lượng mẫu -->
+            <div class="review-metrics-grid">
+              <div class="metric-item">
+                <span class="m-label">Tổng khung thô:</span>
+                <strong id="m-frames">--</strong>
               </div>
-              <div class="benchmark-col">
-                <strong class="col-header">Pose + HandLandmarker</strong>
-                <div>Tốc độ: <span id="bm-pose-fps" class="text-accent font-bold">--</span> lần/s</div>
-                <div>Độ trễ TB: <span id="bm-pose-lat">--</span> ms</div>
-                <div>Khung có &ge;1 tay: <span id="bm-pose-one-hand">--</span>%</div>
-                <div>Khung đủ 2 tay: <span id="bm-pose-both-hands" class="text-accent font-bold">--</span>%</div>
+              <div class="metric-item">
+                <span class="m-label">Thời gian:</span>
+                <strong id="m-duration">-- ms</strong>
+              </div>
+              <div class="metric-item">
+                <span class="m-label">FPS thực tế:</span>
+                <strong id="m-fps">--</strong>
+              </div>
+              <div class="metric-item">
+                <span class="m-label">Tay Trái (L):</span>
+                <strong id="m-left-rate">--%</strong>
+              </div>
+              <div class="metric-item">
+                <span class="m-label">Tay Phải (R):</span>
+                <strong id="m-right-rate">--%</strong>
               </div>
             </div>
-            <div class="benchmark-conclusion">
-              <p>Khuyến nghị: <strong id="bm-recommendation" class="text-success">--</strong></p>
-              <p class="text-muted" id="bm-notes"></p>
+
+            <!-- Điều chỉnh điểm cắt đầu / cuối -->
+            <div id="trim-controls-container" class="trim-controls-box">
+              <div class="trim-header">
+                <span class="trim-title">✂️ Tinh chỉnh điểm cắt ký hiệu:</span>
+                <span id="trim-info-text" class="trim-info text-accent">Khung 0 &rarr; 0</span>
+              </div>
+              <div class="trim-sliders">
+                <div class="slider-row">
+                  <label for="slider-crop-start" class="slider-label">Bắt đầu: <strong id="val-crop-start" class="text-accent">0</strong></label>
+                  <input type="range" id="slider-crop-start" min="0" max="100" value="0" class="range-slider" />
+                </div>
+                <div class="slider-row">
+                  <label for="slider-crop-end" class="slider-label">Kết thúc: <strong id="val-crop-end" class="text-accent">100</strong></label>
+                  <input type="range" id="slider-crop-end" min="0" max="100" value="100" class="range-slider" />
+                </div>
+              </div>
+              <p class="section-hint">💡 Replay phát lặp lại trong đoạn đã cắt. Dữ liệu khi nạp sẽ được nội suy đoạn này về 30 khung (lớp "Nghỉ" giữ nguyên).</p>
+            </div>
+
+            <!-- Cảnh báo chất lượng nếu có -->
+            <div id="review-warning-box" class="alert-box alert-warning hidden">
+              ⚠️ <span id="review-warning-text"></span>
+            </div>
+
+            <div class="action-row review-actions">
+              <button id="btn-save-sample" class="btn btn-success flex-1">
+                💾 Lưu Mẫu Này (Space)
+              </button>
+              <button id="btn-discard-sample" class="btn btn-secondary flex-1">
+                🗑️ Bỏ & Thu Lại (Esc)
+              </button>
+            </div>
+          </div>
+
+          <!-- 1.3 Thống Kê Số Mẫu Đã Thu Theo Nhãn -->
+          <div class="panel-section">
+            <div class="section-header-flex">
+              <h2 class="section-title">2. Tiến Độ Thu Thập Theo Nhãn</h2>
+              <span class="badge info-badge">Tổng đã lưu: <strong id="total-samples-count">0</strong></span>
+            </div>
+            <p class="section-desc">Dữ liệu được lưu an toàn trong trình duyệt (IndexedDB), không mất khi tải lại trang.</p>
+
+            <div id="label-stats-grid" class="label-stats-grid">
+              <!-- Render danh sách nhãn kèm số lượng mẫu -->
+            </div>
+
+            <!-- Thanh chức năng xuất file & quản lý -->
+            <p class="section-hint" style="margin-top: 0.5rem;">
+              📄 <strong>Định dạng xuất:</strong> File JSON lưu cấu trúc nguyên bản phân cấp; File CSV phẳng hóa mỗi hàng là 1 khung hình trong đoạn thô kèm 272 đặc trưng và chỉ số cắt crop_start, crop_end phục vụ huấn luyện Python.
+            </p>
+            <div class="export-actions-row">
+              <button id="btn-export-all-json" class="btn btn-primary flex-1">
+                📥 Tải Dataset JSON
+              </button>
+              <button id="btn-export-all-csv" class="btn btn-secondary flex-1">
+                📊 Tải Dataset CSV
+              </button>
+              <button id="btn-clear-database" class="btn btn-outline-danger" title="Xóa toàn bộ mẫu đã thu">
+                🗑️ Xóa dữ liệu
+              </button>
             </div>
           </div>
         </div>
 
-        <!-- 2. Kiểm tra Đường ống Mô hình (Dummy ML Pipeline) -->
-        <div class="panel-section">
-          <h2 class="section-title">2. Thử Nghiệm Mô Hình Client-Side (ONNX)</h2>
-          <div class="alert-box alert-warning">
-            ⚠️ <strong>Lưu ý:</strong> Mô hình này mang trọng số ngẫu nhiên chỉ nhằm chứng minh đường ống (pipeline) suy luận WebAssembly/ONNX Runtime Web chạy trơn tru trong trình duyệt, KHÔNG phải kết quả nhận dạng thực tế.
-          </div>
-
-          <div class="onnx-status-row">
-            <span>Trạng thái ONNX:</span>
-            <span id="onnx-status" class="status-tag status-loading">Đang tải mô hình...</span>
-          </div>
-
-          <div class="action-row">
-            <button id="btn-run-inference" class="btn btn-success full-width" disabled>
-              ▶️ Thử Suy Luận Với Khung Hình Hiện Tại
-            </button>
-          </div>
-
-          <div id="inference-result-box" class="inference-box hidden">
-            <div class="inf-top">
-              <span>Dự đoán:</span>
-              <strong id="inf-top-label" class="inf-label">--</strong>
-              <span id="inf-latency" class="inf-time">(-- ms)</span>
+        <!-- ==================== TAB 2: BENCHMARK & THỬ NGHIỆM ONNX (M0) ==================== -->
+        <div id="tab-content-benchmark" class="tab-pane hidden">
+          <!-- Benchmark Section -->
+          <div class="panel-section">
+            <h2 class="section-title">1. Đánh Giá & Benchmark Landmark</h2>
+            <p class="section-desc">So sánh hiệu năng giữa <strong>HolisticLandmarker</strong> và <strong>Pose + HandLandmarker</strong> theo yêu cầu mốc M0.</p>
+            
+            <div class="tracker-selector-group">
+              <label class="radio-label">
+                <input type="radio" name="tracker-mode" value="pose_hand" checked />
+                <span>Pose + HandLandmarker (Ghép - Đã tối ưu)</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="tracker-mode" value="holistic" />
+                <span>HolisticLandmarker (Đầy đủ - Dự phòng)</span>
+              </label>
+              <label class="checkbox-label" title="Giảm độ phân giải xử lý 640px và chạy Pose mỗi 3 khung hình">
+                <input type="checkbox" id="chk-optimize-posehand" checked />
+                <span class="text-accent">⚡ Bật tối ưu Pose+Hand (bỏ khung Pose & downscale)</span>
+              </label>
             </div>
-            <div class="prob-list" id="prob-list">
-              <!-- Danh sách xác suất sẽ render ở đây -->
+
+            <div class="action-row">
+              <button id="btn-run-benchmark" class="btn btn-primary full-width">
+                ⚡ Bắt Đầu Benchmark (Đếm ngược 5s &rarr; Đo 10s)
+              </button>
+            </div>
+
+            <div id="benchmark-progress-box" class="progress-box hidden">
+              <div class="progress-bar-container">
+                <div id="benchmark-progress-bar" class="progress-bar" style="width: 0%"></div>
+              </div>
+              <p id="benchmark-progress-text" class="progress-text">Đang chuẩn bị...</p>
+            </div>
+
+            <div id="benchmark-result-card" class="result-box hidden">
+              <div class="result-header">
+                <h4 class="result-title">Kết Quả Benchmark</h4>
+                <button id="btn-export-json" class="btn btn-secondary btn-sm" title="Tải file JSON kết quả benchmark">
+                  📥 Xuất JSON
+                </button>
+              </div>
+              <div class="camera-spec-line">
+                <div>Thiết bị: <strong id="bm-device-type">--</strong></div>
+                <div>Camera: <strong id="bm-camera-res" class="text-accent">--</strong> | <strong id="bm-camera-fps" class="text-accent">-- fps</strong></div>
+              </div>
+              <div class="benchmark-grid">
+                <div class="benchmark-col">
+                  <strong class="col-header">HolisticLandmarker</strong>
+                  <div>Tốc độ: <span id="bm-holistic-fps" class="text-accent font-bold">--</span> lần/s</div>
+                  <div>Độ trễ TB: <span id="bm-holistic-lat">--</span> ms</div>
+                  <div>Khung có &ge;1 tay: <span id="bm-holistic-one-hand">--</span>%</div>
+                  <div>Khung đủ 2 tay: <span id="bm-holistic-both-hands" class="text-accent font-bold">--</span>%</div>
+                </div>
+                <div class="benchmark-col">
+                  <strong class="col-header">Pose + HandLandmarker</strong>
+                  <div>Tốc độ: <span id="bm-pose-fps" class="text-accent font-bold">--</span> lần/s</div>
+                  <div>Độ trễ TB: <span id="bm-pose-lat">--</span> ms</div>
+                  <div>Khung có &ge;1 tay: <span id="bm-pose-one-hand">--</span>%</div>
+                  <div>Khung đủ 2 tay: <span id="bm-pose-both-hands" class="text-accent font-bold">--</span>%</div>
+                </div>
+              </div>
+              <div class="benchmark-conclusion">
+                <p>Khuyến nghị: <strong id="bm-recommendation" class="text-success">--</strong></p>
+                <p class="text-muted" id="bm-notes"></p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 3. Hướng dẫn Thực nghiệm & Kiểm tra Nhãn Tay -->
-        <div class="panel-section">
-          <h2 class="section-title">3. Kiểm Tra Thực Nghiệm Nhãn Tay</h2>
-          <p class="section-desc">
-            Quy ước chuẩn: <strong>Theo người ký (Signer's perspective)</strong>.
-          </p>
-          <ul class="guide-list">
-            <li>Giơ <strong>tay phải</strong> của bạn lên: Đầu xương tay phải phải hiển thị nhãn <span class="tag-orange">Tay Phải (R)</span>.</li>
-            <li>Giơ <strong>tay trái</strong> của bạn lên: Đầu xương tay trái phải hiển thị nhãn <span class="tag-cyan">Tay Trái (L)</span>.</li>
-            <li>Nếu thấy bị ngược do đặc thù camera/thiết bị, bấm nút <strong>"Đổi nhãn L/R"</strong> ở trên để đảo lại.</li>
-          </ul>
+          <!-- ONNX Pipeline Section -->
+          <div class="panel-section">
+            <h2 class="section-title">2. Thử Nghiệm Mô Hình Client-Side (ONNX)</h2>
+            <div class="alert-box alert-warning">
+              ⚠️ <strong>Lưu ý:</strong> Mô hình này mang trọng số ngẫu nhiên chỉ nhằm chứng minh đường ống (pipeline) suy luận WebAssembly/ONNX Runtime Web chạy trơn tru trong trình duyệt, KHÔNG phải kết quả nhận dạng thực tế.
+            </div>
+
+            <div class="onnx-status-row">
+              <span>Trạng thái ONNX:</span>
+              <span id="onnx-status" class="status-tag status-loading">Đang tải mô hình...</span>
+            </div>
+
+            <div class="action-row">
+              <button id="btn-run-inference" class="btn btn-success full-width" disabled>
+                ▶️ Thử Suy Luận Với Khung Hình Hiện Tại
+              </button>
+            </div>
+
+            <div id="inference-result-box" class="inference-box hidden">
+              <div class="inf-top">
+                <span>Dự đoán:</span>
+                <strong id="inf-top-label" class="inf-label">--</strong>
+                <span id="inf-latency" class="inf-time">(-- ms)</span>
+              </div>
+              <div class="prob-list" id="prob-list">
+                <!-- Danh sách xác suất sẽ render ở đây -->
+              </div>
+            </div>
+          </div>
         </div>
       </aside>
     </main>
@@ -225,4 +381,3 @@
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
-
